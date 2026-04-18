@@ -19,6 +19,8 @@ namespace ConwayLife.Presentation.Views
         private Color _aliveColor = Color.white;
         private Color _deadColor = Color.black;
         private Image[,] _cellImages;
+        private int _currentWidth;
+        private int _currentHeight;
 
         /// <summary>
         /// Creates the visual grid for the given size.
@@ -39,6 +41,8 @@ namespace ConwayLife.Presentation.Views
                 return;
             }
 
+            _currentWidth = width;
+            _currentHeight = height;
             ClearExistingCells();
 
             _cellImages = new Image[width, height];
@@ -125,6 +129,16 @@ namespace ConwayLife.Presentation.Views
             {
                 Destroy(_cellRoot.GetChild(i).gameObject);
             }
+        }
+
+        /// <summary>
+        /// Updates cell spacing to <paramref name="size"/> and rebuilds the visual grid.
+        /// </summary>
+        /// <param name="size">New cell size in pixels applied to both axes.</param>
+        public void SetCellSize(float size)
+        {
+            _cellSpacing = new Vector2(size, size);
+            Initialize(_currentWidth, _currentHeight);
         }
     }
 }
