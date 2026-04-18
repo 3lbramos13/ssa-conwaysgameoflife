@@ -1,4 +1,6 @@
 using System.Collections;
+using System.Collections.Generic;
+using ConwayLife.Configuration;
 using ConwayLife.Presentation.Controllers;
 using TMPro;
 using UnityEngine;
@@ -21,10 +23,20 @@ namespace ConwayLife.UI
         [SerializeField] private TMP_Text _generationText;
         [Tooltip("Text field that shows current alive cell count.")]
         [SerializeField] private TMP_Text _aliveCountText;
+        [Tooltip("Dropdown used to choose an active GameOfLifeConfig.")]
+        [SerializeField] private TMP_Dropdown _configDropdown;
+        [Tooltip("Available config assets that can be selected at runtime.")]
+        [SerializeField] private GameOfLifeConfig[] _configs;
+        [Tooltip("Button wired to the Randomize action.")]
+        [SerializeField] private Button _randomizeButton;
         [Tooltip("CanvasGroup used to fade the control panel on startup.")]
         [SerializeField] private CanvasGroup _controlPanelCanvasGroup;
         [Tooltip("Duration of the startup fade in seconds.")]
         [SerializeField] private float _startupFadeDuration = 0.35f;
+        [Tooltip("Slider used to control the visual cell size.")]
+        [SerializeField] private Slider _cellSizeSlider;
+        [Tooltip("Slider used to control the random fill density.")]
+        [SerializeField] private Slider _densitySlider;
 
         /// <summary>
         /// Delays UI setup by one frame so GameController finishes Start first.
@@ -53,24 +65,66 @@ namespace ConwayLife.UI
                 _speedSlider.SetValueWithoutNotify(_gameController.SimulationSpeed);
             }
 
+            if (_cellSizeSlider != null)
+            {
+                _cellSizeSlider.onValueChanged.RemoveListener(OnCellSizeChanged);
+                _cellSizeSlider.onValueChanged.AddListener(OnCellSizeChanged);
+                _cellSizeSlider.SetValueWithoutNotify(20f);
+            }
+
+            if (_densitySlider != null)
+            {
+                _densitySlider.onValueChanged.RemoveListener(OnDensityChanged);
+                _densitySlider.onValueChanged.AddListener(OnDensityChanged);
+                _densitySlider.SetValueWithoutNotify(_gameController.CurrentDensity);
+            }
+
+            PopulateConfigDropdown();
+
+            if (_configs != null && _configs.Length > 0)
+            {
+                ApplySelectedConfig();
+            }
+
             if (_controlPanelCanvasGroup != null)
             {
-                StartCoroutine(FadeControlPanelAlpha(targetAlpha: 0.15f, _startupFadeDuration));
+                StartCoroutine(FadeControlPanelAlpha(targetAlpha: 0.60f, _startupFadeDuration));
             }
 
             RefreshUI();
         }
 
+        /// <summary>
+        /// Refreshes runtime labels every frame.
+        /// </summary>
         private void Update()
         {
             RefreshUI();
         }
 
+        /// <summary>
+        /// Removes all runtime listener registrations when this object is destroyed.
+        /// </summary>
         private void OnDestroy()
         {
             if (_speedSlider != null)
             {
                 _speedSlider.onValueChanged.RemoveListener(OnSpeedChanged);
+            }
+
+            if (_configDropdown != null)
+            {
+                _configDropdown.onValueChanged.RemoveListener(OnConfigChanged);
+            }
+
+            if (_cellSizeSlider != null)
+            {
+                _cellSizeSlider.onValueChanged.RemoveListener(OnCellSizeChanged);
+            }
+
+            if (_densitySlider != null)
+            {
+                _densitySlider.onValueChanged.RemoveListener(OnDensityChanged);
             }
         }
 
@@ -103,6 +157,47 @@ namespace ConwayLife.UI
         }
 
         /// <summary>
+        /// Applies the currently selected config from the dropdown.
+        /// </summary>
+        public void ApplySelectedConfig()
+        {
+            if (_gameController == null || _configDropdown == null || _configs == null || _configs.Length == 0)
+            {
+                return;
+            }
+
+            int selectedIndex = _configDropdown.value;
+            if (selectedIndex < 0 || selectedIndex >= _configs.Length)
+            {
+                return;
+            }
+
+            GameOfLifeConfig selectedConfig = _configs[selectedIndex];
+            _gameController.ApplyConfig(selectedConfig);
+
+            if (_speedSlider != null)
+            {
+                if (_speedSlider.maxValue < _gameController.SimulationSpeed)
+                {
+                    _speedSlider.maxValue = _gameController.SimulationSpeed;
+                }
+
+                _speedSlider.SetValueWithoutNotify(_gameController.SimulationSpeed);
+            }
+
+            RefreshUI();
+        }
+
+        /// <summary>
+        /// Handles dropdown selection changes for config switching.
+        /// </summary>
+        /// <param name="index">Selected dropdown option index.</param>
+        public void OnConfigChanged(int index)
+        {
+            ApplySelectedConfig();
+        }
+
+        /// <summary>
         /// Randomizes the grid using current config density.
         /// </summary>
         public void Randomize()
@@ -114,6 +209,34 @@ namespace ConwayLife.UI
 
             _gameController.RandomizeGrid();
             RefreshUI();
+        }
+
+        /// <summary>
+        /// Applies a new visual cell size from the UI slider.
+        /// </summary>
+        /// <param name="value">Cell size in pixels.</param>
+        public void OnCellSizeChanged(float value)
+        {
+            if (_gameController == null)
+            {
+                return;
+            }
+
+            _gameController.SetCellSize(value);
+        }
+
+        /// <summary>
+        /// Applies a new random fill density from the UI slider.
+        /// </summary>
+        /// <param name="value">Density value in [0, 1].</param>
+        public void OnDensityChanged(float value)
+        {
+            if (_gameController == null)
+            {
+                return;
+            }
+
+            _gameController.SetDensity(value);
         }
 
         /// <summary>
@@ -148,6 +271,37 @@ namespace ConwayLife.UI
             _controlPanelCanvasGroup.alpha = targetAlpha;
         }
 
+        /// <summary>
+        /// Clears and repopulates the config dropdown from the <see cref="_configs"/> array.
+        /// </summary>
+        private void PopulateConfigDropdown()
+        {
+            if (_configDropdown == null)
+            {
+                return;
+            }
+
+            _configDropdown.onValueChanged.RemoveListener(OnConfigChanged);
+            _configDropdown.ClearOptions();
+
+            if (_configs == null || _configs.Length == 0)
+            {
+                _configDropdown.onValueChanged.AddListener(OnConfigChanged);
+                return;
+            }
+
+            var options = new List<TMP_Dropdown.OptionData>(_configs.Length);
+            for (int i = 0; i < _configs.Length; i++)
+            {
+                string optionName = _configs[i] != null ? _configs[i].name : $"Config {i + 1}";
+                options.Add(new TMP_Dropdown.OptionData(optionName));
+            }
+
+            _configDropdown.AddOptions(options);
+            _configDropdown.SetValueWithoutNotify(0);
+            _configDropdown.onValueChanged.AddListener(OnConfigChanged);
+        }
+
         private void RefreshUI()
         {
             if (_gameController == null)
@@ -168,6 +322,13 @@ namespace ConwayLife.UI
             if (_playPauseLabel != null)
             {
                 _playPauseLabel.text = _gameController.IsPlaying ? "Pause" : "Play";
+            }
+
+            if (_randomizeButton != null)
+            {
+                bool isPatternMode = _gameController.CurrentConfig != null &&
+                    _gameController.CurrentConfig.SelectedInitializationMode == InitializationMode.Pattern;
+                _randomizeButton.interactable = !isPatternMode;
             }
         }
     }
